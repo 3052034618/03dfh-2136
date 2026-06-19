@@ -64,7 +64,7 @@ export default function App() {
           className={`tab ${tab === 'sessions' ? 'active' : ''}`}
           onClick={() => setTab('sessions')}
         >
-          📅 今日场次
+          📅 场次&调度
           {pendingSessionCount > 0 && <span className="badge">{pendingSessionCount}</span>}
         </button>
         <button

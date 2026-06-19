@@ -96,6 +96,15 @@ export interface Script {
   crossGender: 'ok' | 'avoid' | 'forbidden'
 }
 
+export interface SessionHandover {
+  confirmedAt?: number
+  handlerName?: string
+  playersNotified: boolean
+  gameStarted: boolean
+  gameStartedAt?: number
+  lastViewedAt?: number
+}
+
 export interface Session {
   id: string
   scriptId: string
@@ -111,6 +120,7 @@ export interface Session {
     startTime: boolean
     carpoolSuccess: boolean
   }
+  handover?: SessionHandover
 }
 
 export interface MatchOption {
@@ -120,6 +130,7 @@ export interface MatchOption {
   totalCount: number
   conflicts: MatchConflict[]
   score: number
+  reasons: string[]
 }
 
 export type ConflictType =

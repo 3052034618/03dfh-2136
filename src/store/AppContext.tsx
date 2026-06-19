@@ -27,7 +27,7 @@ interface AppContextType extends AppState {
 
 const AppContext = createContext<AppContextType | null>(null)
 
-const STORAGE_KEY = 'jubensha_matcher_state_v2'
+const STORAGE_KEY = 'jubensha_matcher_state_v3'
 
 function loadState(): AppState | null {
   try {
@@ -38,6 +38,10 @@ function loadState(): AppState | null {
         ...p,
         source: p.source ?? 'walkin',
         status: p.status ?? 'waiting',
+      }))
+      state.sessions = state.sessions.map(s => ({
+        ...s,
+        handover: s.handover ?? { playersNotified: false, gameStarted: false },
       }))
       return state
     }
@@ -127,7 +131,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }))
   }
 
-  const confirmSession = (sessionId: string) => {
+  const confirmSession = (sessionId: string, handlerName?: string) => {
     setState(st => {
       const options = st.matchOptions[sessionId]
       const sel = st.selectedMatch
@@ -148,6 +152,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   price: false,
                   startTime: false,
                   carpoolSuccess: false,
+                },
+                handover: {
+                  confirmedAt: Date.now(),
+                  handlerName: handlerName || undefined,
+                  playersNotified: false,
+                  gameStarted: false,
                 },
               }
             : se

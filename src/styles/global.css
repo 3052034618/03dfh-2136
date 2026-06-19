@@ -850,3 +850,136 @@ textarea.form-control {
   border-radius: 4px;
   margin-left: 6px;
 }
+
+.dispatch-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.dispatch-card {
+  background: var(--bg-2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  transition: all 0.15s;
+}
+
+.dispatch-card:hover {
+  border-color: var(--border-light);
+}
+
+.dispatch-pending {
+  border-left: 4px solid var(--warning);
+}
+
+.dispatch-matched {
+  border-left: 4px solid var(--info);
+}
+
+.dispatch-confirmed {
+  border-left: 4px solid var(--success);
+}
+
+.dispatch-playing {
+  border-left: 4px solid var(--primary);
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.dispatch-ended {
+  border-left: 4px solid var(--text-muted);
+  opacity: 0.6;
+}
+
+.dispatch-urgent {
+  border-color: var(--danger);
+  border-left-color: var(--danger);
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: var(--danger); }
+  50% { border-color: rgba(239, 68, 68, 0.4); }
+}
+
+.dispatch-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.dispatch-room {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.dispatch-time {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.dispatch-body {
+  margin-bottom: 10px;
+}
+
+.dispatch-script {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.dispatch-dm {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.dispatch-people {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dispatch-count {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dispatch-count.count-ok {
+  color: var(--success);
+}
+
+.dispatch-count.count-need {
+  color: var(--warning);
+}
+
+.dispatch-type-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-3);
+  color: var(--text-dim);
+}
+
+.dispatch-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.dispatch-status {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.dispatch-action {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 500;
+}

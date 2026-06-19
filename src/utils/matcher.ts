@@ -1,4 +1,4 @@
-import { Player, Script, Session, MatchOption, MatchConflict, ConflictType } from '../types'
+import { Player, Script, Session, MatchOption, MatchConflict, ConflictType, PLAYER_SOURCE_LABELS } from '../types'
 
 function uid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
@@ -11,6 +11,56 @@ function sumCount(players: Player[]) {
 function hasConflictingGroup(playersA: Player[], playersB: Player[]) {
   const groups = new Set(playersA.filter(p => p.groupId).map(p => p.groupId))
   return playersB.some(p => p.groupId && groups.has(p.groupId))
+}
+
+function buildReasons(players: Player[], script: Script, conflicts: MatchConflict[]): string[] {
+  const reasons: string[] = []
+  const total = sumCount(players)
+
+  if (total === script.bestPlayers) {
+    reasons.push(`达到最佳人数 ${script.bestPlayers} 人`)
+  } else if (total === script.minPlayers) {
+    reasons.push(`刚好达到最低人数 ${script.minPlayers} 人`)
+  }
+
+  const avgWait = players.reduce((s, p) => s + (Date.now() - p.arrivalTime), 0) / players.length / 60000
+  if (avgWait > 20) {
+    const longest = players.reduce((a, b) => a.arrivalTime < b.arrivalTime ? a : b)
+    reasons.push(`${longest.name} 等候已超 ${Math.round((Date.now() - longest.arrivalTime) / 60000)} 分钟`)
+  }
+
+  const onSiteCount = players.filter(p => p.status === 'waiting' || p.status === 'notified').length
+  if (onSiteCount === players.length) {
+    reasons.push('所有玩家均在现场')
+  }
+
+  const walkins = players.filter(p => p.source === 'walkin')
+  const resLate = players.filter(p => p.source === 'reservation_late')
+  if (walkins.length > 0) reasons.push(`${walkins.length} 组散客直接到店`)
+  if (resLate.length > 0) reasons.push(`${resLate.length} 组预约迟到，优先安排`)
+
+  if (script.type === 'joy') {
+    const noisy = players.filter(p => p.tags.includes('noisy')).length
+    if (noisy > 0) reasons.push(`${noisy} 组爱吵闹玩家适合欢乐本`)
+  }
+  if (script.type === 'mechanism') {
+    const mech = players.filter(p => p.tags.includes('mechanism_expert')).length
+    if (mech > 0) reasons.push(`${mech} 组机制老手适合机制本`)
+  }
+
+  const groups = players.filter(p => p.groupId)
+  if (groups.length > 0) {
+    const uniqueGroups = new Set(groups.map(p => p.groupId)).size
+    reasons.push(`${uniqueGroups} 个团体整体安排不拆开`)
+  }
+
+  const newbies = players.filter(p => p.proficiency === 'newbie')
+  const helpers = players.filter(p => p.tags.includes('newbie_friendly'))
+  if (newbies.length > 0 && helpers.length > 0) {
+    reasons.push(`${helpers.length} 组新手友好玩家可带 ${newbies.length} 组新手`)
+  }
+
+  return reasons
 }
 
 function detectConflicts(
@@ -142,8 +192,15 @@ function computeScore(players: Player[], script: Script, conflicts: MatchConflic
   score -= conflicts.filter(c => c.severity === 'block').length * 1000
   score -= conflicts.filter(c => c.severity === 'warn').length * 8
 
-  const waitTime = Date.now() - Math.min(...players.map(p => p.arrivalTime))
-  score += Math.floor(waitTime / 1000 / 60) * 0.3
+  const now = Date.now()
+  const avgWaitMin = players.reduce((s, p) => s + (now - p.arrivalTime), 0) / players.length / 60000
+  score += avgWaitMin * 0.8
+
+  const onSiteCount = players.filter(p => p.status === 'waiting' || p.status === 'notified').length
+  score += onSiteCount * 5
+
+  const resLate = players.filter(p => p.source === 'reservation_late').length
+  score += resLate * 8
 
   return score
 }
@@ -153,11 +210,12 @@ export function generateMatchOptions(
   script: Script,
   allPlayers: Player[]
 ): MatchOption[] {
+  const activePlayers = allPlayers.filter(p => p.status !== 'abandoned')
   const options: MatchOption[] = []
   const seen = new Set<string>()
 
-  const soloPlayers = allPlayers.filter(p => !p.groupId)
-  const groups = allPlayers.filter(p => p.groupId)
+  const soloPlayers = activePlayers.filter(p => !p.groupId)
+  const groups = activePlayers.filter(p => p.groupId)
   const uniqueGroups = Array.from(new Map(groups.map(g => [g.groupId!, g])).values())
 
   function tryBuild(candidates: Player[]): MatchOption | null {
@@ -168,13 +226,17 @@ export function generateMatchOptions(
     const key = candidates.map(p => p.id).sort().join(',')
     if (seen.has(key)) return null
     seen.add(key)
+    const computedConflicts = conflicts
+    const computedScore = computeScore(candidates, script, conflicts)
+    const computedReasons = buildReasons(candidates, script, conflicts)
     return {
       id: uid(),
       sessionId: session.id,
       players: candidates,
       totalCount: total,
-      conflicts,
-      score: computeScore(candidates, script, conflicts),
+      conflicts: computedConflicts,
+      score: computedScore,
+      reasons: computedReasons,
     }
   }
 

@@ -29,6 +29,7 @@ export default function ConfirmDesk() {
   const [autoJumpDone, setAutoJumpDone] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [generatedText, setGeneratedText] = useState<{ title: string; content: string } | null>(null)
+  const [handlerInput, setHandlerInput] = useState('')
 
   useEffect(() => {
     if (autoJumpDone) return
@@ -60,6 +61,7 @@ export default function ConfirmDesk() {
             totalCount: s.bookedPlayers.reduce((a, b) => a + b.count, 0),
             conflicts: [],
             score: 0,
+            reasons: [],
           }
         } else if (selectedMatch?.sessionId === s.id) {
           option = matchOptions[s.id]?.find(o => o.id === selectedMatch.optionId) ?? null
@@ -164,7 +166,8 @@ export default function ConfirmDesk() {
 
   const generateSeatingSlip = () => {
     if (!activeEntry?.script || !activeEntry.option) return
-    const { session, script, option } = activeEntry
+    const { session: rawSession, script, option } = activeEntry
+    const session = sessions.find(x => x.id === rawSession.id) ?? rawSession
     const lines: string[] = []
     lines.push('╔══════════════════════════════╗')
     lines.push('║       🎭 玩家入座通知单       ║')
@@ -191,13 +194,20 @@ export default function ConfirmDesk() {
       })
       lines.push('')
     }
+    lines.push('──── 交接记录 ────')
+    lines.push(`核对时间：${session.handover?.confirmedAt ? formatFullTime(session.handover.confirmedAt) : '—'}`)
+    lines.push(`经手前台：${session.handover?.handlerName || '—'}`)
+    lines.push(`已通知玩家：${session.handover?.playersNotified ? '是' : '否'}`)
+    lines.push(`已开本：${session.handover?.gameStarted ? '是' : '否'}`)
+    lines.push('')
     lines.push('请各位玩家准时入座，祝游戏愉快！🎮')
     setGeneratedText({ title: '入座单', content: lines.join('\n') })
   }
 
   const generateDMChecklist = () => {
     if (!activeEntry?.script || !activeEntry.option) return
-    const { session, script, option } = activeEntry
+    const { session: rawSession, script, option } = activeEntry
+    const session = sessions.find(x => x.id === rawSession.id) ?? rawSession
     const lines: string[] = []
     lines.push('╔══════════════════════════════╗')
     lines.push('║     📝 DM 准备清单            ║')
@@ -229,6 +239,12 @@ export default function ConfirmDesk() {
     if (newbies.length > 0) {
       lines.push(`💡 含 ${newbies.length} 名新手，请注意扶车讲解`)
     }
+    lines.push('')
+    lines.push('──── 交接信息 ────')
+    lines.push(`核对时间：${session.handover?.confirmedAt ? formatFullTime(session.handover.confirmedAt) : '—'}`)
+    lines.push(`经手前台：${session.handover?.handlerName || '—'}`)
+    lines.push(`玩家已通知：${session.handover?.playersNotified ? '是' : '否'}`)
+    lines.push(`已开本：${session.handover?.gameStarted ? '是' : '否'}`)
     lines.push('')
     lines.push('准备确认：□ 剧本物料 □ 角色卡 □ 道具 □ BGM □ 饮品')
     setGeneratedText({ title: 'DM 准备清单', content: lines.join('\n') })
@@ -391,6 +407,67 @@ export default function ConfirmDesk() {
                       <div className="label">预计时长</div>
                     </div>
                   </div>
+                  <div style={{ marginTop: 12, padding: 12, background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>📋 交接追踪</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, fontSize: 12 }}>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)' }}>核对时间：</span>
+                        <span style={{ color: 'var(--text)', fontWeight: 500 }}>
+                          {s.handover?.confirmedAt ? formatFullTime(s.handover.confirmedAt) : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)' }}>经手前台：</span>
+                        {s.handover?.handlerName ? (
+                          <span style={{ color: 'var(--text)', fontWeight: 500 }}>{s.handover.handlerName}</span>
+                        ) : (
+                          <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                            <input
+                              className="form-control"
+                              style={{ width: 100, padding: '3px 8px', fontSize: 12 }}
+                              placeholder="输入姓名"
+                              value={handlerInput}
+                              onChange={e => setHandlerInput(e.target.value)}
+                            />
+                            <button className="btn btn-sm btn-primary" onClick={() => {
+                              if (handlerInput.trim()) {
+                                updateSession(s.id, { handover: { ...s.handover!, handlerName: handlerInput.trim() } })
+                              }
+                            }}>记录</button>
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)' }}>已通知玩家：</span>
+                        <span
+                          style={{ color: s.handover?.playersNotified ? 'var(--success)' : 'var(--text-dim)', fontWeight: 500, cursor: 'pointer' }}
+                          onClick={() => {
+                            if (s.handover) {
+                              updateSession(s.id, { handover: { ...s.handover, playersNotified: !s.handover.playersNotified } })
+                            }
+                          }}
+                        >
+                          {s.handover?.playersNotified ? '✅ 已通知' : '❌ 未通知（点击切换）'}
+                        </span>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)' }}>已开本：</span>
+                        <span
+                          style={{ color: s.handover?.gameStarted ? 'var(--success)' : 'var(--text-dim)', fontWeight: 500, cursor: 'pointer' }}
+                          onClick={() => {
+                            if (s.handover) {
+                              updateSession(s.id, {
+                                handover: { ...s.handover, gameStarted: !s.handover.gameStarted, gameStartedAt: !s.handover.gameStarted ? Date.now() : undefined },
+                                status: !s.handover.gameStarted ? 'playing' : 'confirmed',
+                              })
+                            }
+                          }}
+                        >
+                          {s.handover?.gameStarted ? `✅ 已开本（${s.handover.gameStartedAt ? formatFullTime(s.handover.gameStartedAt) : ''}）` : '❌ 未开本（点击切换）'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="panel">
@@ -457,7 +534,10 @@ export default function ConfirmDesk() {
                         disabled={s.status !== 'confirmed'}
                         onClick={() => {
                           if (confirm('确定标记为进行中吗？')) {
-                            updateSession(s.id, { status: 'playing' })
+                            updateSession(s.id, {
+                              status: 'playing',
+                              handover: { ...s.handover!, gameStarted: true, gameStartedAt: Date.now() }
+                            })
                           }
                         }}
                       >

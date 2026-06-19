@@ -193,7 +193,7 @@ function MatchResults({
 
       <div style={{ marginBottom: 16, padding: 14, background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showSwitchScript ? 12 : 0 }}>
-          <span style={{ fontSize: 13, color: 'var(--text-dim)' }}>🔄 临时换本：保留当前玩家，换一个剧本重新评估</span>
+          <span style={{ fontSize: 13, color: 'var(--text-dim)' }}>🔄 临时换本：换剧本不影响已选玩家，围绕他们重新评估</span>
           <button className="btn btn-sm" onClick={() => setShowSwitchScript(v => !v)}>
             {showSwitchScript ? '收起' : '换本'}
           </button>
@@ -233,7 +233,7 @@ function MatchResults({
                     ))}
                   </div>
                 )}
-                <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => onSwitchScript(switchScriptId)}>
+                <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => { onSwitchScript(switchScriptId); setShowSwitchScript(false); setSwitchScriptId(''); setSwitchResult(null) }}>
                   ✅ 确认换本
                 </button>
               </div>
@@ -288,6 +288,16 @@ function MatchResults({
                   <PlayerCard key={p.id} player={p} showActions={false} />
                 ))}
               </div>
+
+              {opt.reasons.length > 0 && (
+                <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {opt.reasons.map((r, i) => (
+                    <span key={i} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: 'rgba(16,185,129,0.12)', color: '#6ee7b7' }}>
+                      💡 {r}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               {opt.conflicts.length > 0 && (
                 <div className="conflicts-list">
@@ -374,7 +384,7 @@ export default function TodaySessions() {
     if (!session || !newScript) return
     const currentOption = matchOptions[sessionId]?.find(o => o.id === selectedMatch?.optionId)
     const currentPlayers = currentOption?.players ?? session.bookedPlayers
-    updateSession(sessionId, { scriptId: newScriptId })
+    updateSession(sessionId, { scriptId: newScriptId, bookedPlayers: currentPlayers })
     const existingBooked = currentPlayers
     const usedIds = new Set(existingBooked.map(p => p.id))
     const availablePlayers = players.filter(p => !usedIds.has(p.id))
@@ -436,6 +446,62 @@ export default function TodaySessions() {
           <div className="stat-num">{players.length}</div>
           <div className="stat-label">可匹配候补中</div>
         </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-title">
+          <span>📊 现场调度看板</span>
+        </div>
+        {sortedSessions.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>
+            暂无场次
+          </div>
+        ) : (
+          <div className="dispatch-board">
+            {sortedSessions.map(s => {
+              const script = sessionMap.get(s.scriptId)
+              if (!script) return null
+              const bookedCount = s.bookedPlayers.reduce((acc, p) => acc + p.count, 0)
+              const isUrgent = s.status === 'pending' && s.startTime - Date.now() < 30 * 60000
+              const allConfirmed = s.confirmed && Object.values(s.confirmed).every(Boolean)
+              const nextAction = s.status === 'pending' ? '🔍 凑桌'
+                : s.status === 'matched' ? '✅ 核对'
+                : s.status === 'confirmed' && !allConfirmed ? '✅ 继续核对'
+                : s.status === 'confirmed' && allConfirmed && !s.handover?.playersNotified ? '📣 通知'
+                : s.status === 'confirmed' && allConfirmed ? '🎲 开本'
+                : s.status === 'playing' ? '🏁 进行中'
+                : '—'
+              return (
+                <div key={s.id} className={`dispatch-card dispatch-${s.status} ${isUrgent ? 'dispatch-urgent' : ''}`}>
+                  <div className="dispatch-header">
+                    <span className="dispatch-room">{s.roomName}</span>
+                    <span className="dispatch-time">{formatTime(s.startTime)}</span>
+                  </div>
+                  <div className="dispatch-body">
+                    <div className="dispatch-script">{script.name}</div>
+                    <div className="dispatch-dm">DM {s.dmName}</div>
+                    <div className="dispatch-people">
+                      <span className={`dispatch-count ${bookedCount >= script.minPlayers ? 'count-ok' : 'count-need'}`}>
+                        {bookedCount}/{script.minPlayers}-{script.bestPlayers}
+                      </span>
+                      <span className="dispatch-type-badge">{SCRIPT_TYPE_LABELS[script.type]}</span>
+                    </div>
+                  </div>
+                  <div className="dispatch-footer">
+                    <span className={`dispatch-status status-${s.status}`}>
+                      {STATUS_LABELS[s.status]}
+                    </span>
+                    {s.status === 'pending' ? (
+                      <button className="btn btn-primary btn-sm" onClick={() => handleMatch(s)}>{nextAction}</button>
+                    ) : (
+                      <span className="dispatch-action">{nextAction}</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {viewingSession && viewingScript ? (
