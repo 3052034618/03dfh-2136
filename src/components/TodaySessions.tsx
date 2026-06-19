@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useApp } from '../store/AppContext'
-import { Session, Script, SCRIPT_TYPE_LABELS, MatchOption } from '../types'
+import { Session, Script, SCRIPT_TYPE_LABELS } from '../types'
 import { generateMatchOptions } from '../utils/matcher'
 import { PlayerCard } from './common/PlayerCard'
 
@@ -23,12 +23,11 @@ function countStars(n: number) {
 }
 
 function SessionCard({
-  session, script, onMatch, currentOption,
+  session, script, onMatch,
 }: {
   session: Session
   script: Script
   onMatch: () => void
-  currentOption: MatchOption[] | undefined
 }) {
   const bookedCount = session.bookedPlayers.reduce((s, p) => s + p.count, 0)
   const gap = script.minPlayers - bookedCount
@@ -85,7 +84,7 @@ function SessionCard({
         <span className={`session-status status-${session.status}`}>{STATUS_LABELS[session.status]}</span>
         {session.status === 'pending' && (
           <button className="btn btn-primary btn-sm" onClick={onMatch}>
-            🔍 智能凑桌{currentOption && currentOption.length > 0 ? ` (${currentOption.length})` : ''}
+            🔍 智能凑桌
           </button>
         )}
         {(session.status === 'confirmed' || session.status === 'matched') && (
@@ -97,14 +96,14 @@ function SessionCard({
 }
 
 function MatchResults({
-  session, script, onBack, onChoose, selectedId,
+  session, script, onBack, onChoose, selectedId, onRematch,
 }: {
   session: Session
   script: Script
-  options: MatchOption[]
   onBack: () => void
   onChoose: (optionId: string) => void
   selectedId: string | null
+  onRematch: () => void
 }) {
   const { matchOptions } = useApp()
   const options = matchOptions[session.id] ?? []
@@ -136,8 +135,11 @@ function MatchResults({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <h2 style={{ fontSize: 16 }}>🎯 智能匹配方案（{options.length}）</h2>
-        <button className="btn btn-ghost" onClick={onBack}>← 返回场次列表</button>
+        <h2 style={{ fontSize: 16 }}>🎯 智能匹配方案（{options.length} 个）</h2>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn" onClick={onRematch}>🔄 重新匹配</button>
+          <button className="btn btn-ghost" onClick={onBack}>← 返回场次列表</button>
+        </div>
       </div>
 
       {options.length === 0 ? (
@@ -198,7 +200,11 @@ function MatchResults({
 }
 
 export default function TodaySessions() {
-  const { sessions, scripts, players, setMatchOptions, setSelectedMatch, selectedMatch } = useApp()
+  const {
+    sessions, scripts, players,
+    setMatchOptions, setSelectedMatch, selectedMatch,
+    addSession,
+  } = useApp()
   const [viewingSessionId, setViewingSessionId] = useState<string | null>(null)
   const [showAddSession, setShowAddSession] = useState(false)
   const [newSession, setNewSession] = useState({
@@ -219,7 +225,13 @@ export default function TodaySessions() {
     [sessions]
   )
 
-  const handleMatch = (session: Session) => {
+  const pendingCount = sessions.filter(s => s.status === 'pending').length
+  const urgentCount = sessions.filter(
+    s => s.status === 'pending' && s.startTime - Date.now() < 30 * 60000
+  ).length
+  const confirmedCount = sessions.filter(s => s.status === 'confirmed' || s.status === 'matched').length
+
+  const doMatch = (session: Session) => {
     const script = sessionMap.get(session.scriptId)
     if (!script) return
     const existingBooked = session.bookedPlayers
@@ -227,7 +239,19 @@ export default function TodaySessions() {
     const availablePlayers = players.filter(p => !usedIds.has(p.id))
     const opts = generateMatchOptions(session, script, [...existingBooked, ...availablePlayers])
     setMatchOptions(session.id, opts)
+  }
+
+  const handleMatch = (session: Session) => {
+    doMatch(session)
     setViewingSessionId(session.id)
+    setSelectedMatch(null)
+  }
+
+  const handleRematch = () => {
+    if (!viewingSessionId) return
+    const session = sessions.find(s => s.id === viewingSessionId)
+    if (!session) return
+    doMatch(session)
     setSelectedMatch(null)
   }
 
@@ -235,49 +259,6 @@ export default function TodaySessions() {
     if (!viewingSessionId) return
     setSelectedMatch(viewingSessionId, optionId)
   }
-
-  const pendingCount = sessions.filter(s => s.status === 'pending').length
-  const urgentCount = sessions.filter(
-    s => s.status === 'pending' && s.startTime - Date.now() < 30 * 60000
-  ).length
-  const confirmedCount = sessions.filter(s => s.status === 'confirmed' || s.status === 'matched').length
-
-  if (viewingSessionId) {
-    const session = sessions.find(s => s.id === viewingSessionId)
-    const script = session && sessionMap.get(session.scriptId)
-    if (session && script) {
-      return (
-        <div>
-          <MatchResults
-            session={session}
-            script={script}
-            options={[]}
-            onBack={() => setViewingSessionId(null)}
-            onChoose={handleChoose}
-            selectedId={selectedMatch?.sessionId === session.id ? selectedMatch.optionId : null}
-          />
-          {selectedMatch?.sessionId === session.id && (
-            <div style={{ position: 'sticky', bottom: 16, marginTop: 20, textAlign: 'right', zIndex: 10 }}>
-              <div style={{ display: 'inline-flex', gap: 10, background: 'var(--panel)', padding: 12, borderRadius: 10, border: '1px solid var(--border)', boxShadow: 'var(--shadow)' }}>
-                <button className="btn btn-ghost" onClick={() => setSelectedMatch(null)}>取消选择</button>
-                <button
-                  className="btn btn-success btn-lg"
-                  onClick={() => {
-                    sessionStorage.setItem('pending_confirm_session', session.id)
-                    document.dispatchEvent(new CustomEvent('navigate', { detail: 'confirm' }))
-                  }}
-                >
-                  → 进入成桌核对
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )
-    }
-  }
-
-  const { addSession } = useApp()
 
   const submitSession = () => {
     if (!newSession.scriptId || !newSession.roomName || !newSession.dmName) return
@@ -298,11 +279,20 @@ export default function TodaySessions() {
     })
   }
 
+  const formatDateTimeInput = (ts: number) => {
+    const d = new Date(ts)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
   const minDateStr = (() => {
     const d = new Date(newSession.startTime)
     const pad = (n: number) => String(n).padStart(2, '0')
     return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   })()
+
+  const viewingSession = viewingSessionId ? sessions.find(s => s.id === viewingSessionId) : null
+  const viewingScript = viewingSession ? sessionMap.get(viewingSession.scriptId) : null
 
   return (
     <div>
@@ -325,99 +315,123 @@ export default function TodaySessions() {
         </div>
       </div>
 
-      <div className="panel">
-        <div className="panel-title">
-          <span>📅 今日场次（按开场时间排序）</span>
-          <div className="actions">
-            <button className="btn" onClick={() => setShowAddSession(v => !v)}>
-              {showAddSession ? '取消' : '➕ 加开场次'}
-            </button>
-          </div>
-        </div>
-
-        {showAddSession && (
-          <div style={{ marginBottom: 16, padding: 14, background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)' }}>
-            <div className="form-row-3">
-              <div className="form-group">
-                <label>选择剧本</label>
-                <select
-                  className="form-control"
-                  value={newSession.scriptId}
-                  onChange={e => setNewSession(s => ({ ...s, scriptId: e.target.value }))}
+      {viewingSession && viewingScript ? (
+        <>
+          <MatchResults
+            session={viewingSession}
+            script={viewingScript}
+            onBack={() => setViewingSessionId(null)}
+            onChoose={handleChoose}
+            selectedId={selectedMatch?.sessionId === viewingSession.id ? selectedMatch.optionId : null}
+            onRematch={handleRematch}
+          />
+          {selectedMatch?.sessionId === viewingSession.id && (
+            <div style={{ position: 'sticky', bottom: 16, marginTop: 20, textAlign: 'right', zIndex: 10 }}>
+              <div style={{ display: 'inline-flex', gap: 10, background: 'var(--panel)', padding: 12, borderRadius: 10, border: '1px solid var(--border)', boxShadow: 'var(--shadow)' }}>
+                <button className="btn btn-ghost" onClick={() => setSelectedMatch(null)}>取消选择</button>
+                <button
+                  className="btn btn-success btn-lg"
+                  onClick={() => {
+                    sessionStorage.setItem('pending_confirm_session', viewingSession.id)
+                    document.dispatchEvent(new CustomEvent('navigate', { detail: 'confirm' }))
+                  }}
                 >
-                  <option value="">请选择...</option>
-                  {scripts.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.minPlayers}-{s.bestPlayers}人 · {s.durationHours}h · ¥{s.price})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>开场时间</label>
-                <input
-                  type="datetime-local"
-                  className="form-control"
-                  value={(() => {
-                    const d = new Date(newSession.startTime)
-                    const pad = (n: number) => String(n).padStart(2, '0')
-                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-                  })()}
-                  onChange={e => setNewSession(s => ({ ...s, startTime: new Date(e.target.value).getTime() }))}
-                />
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>当前值：{minDateStr}</div>
-              </div>
-              <div className="form-group">
-                <label>房间名</label>
-                <input
-                  className="form-control"
-                  placeholder="例：一号厅、VIP厅"
-                  value={newSession.roomName}
-                  onChange={e => setNewSession(s => ({ ...s, roomName: e.target.value }))}
-                />
+                  → 进入成桌核对
+                </button>
               </div>
             </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label>DM 姓名</label>
-                <input
-                  className="form-control"
-                  placeholder="例：DM-小白"
-                  value={newSession.dmName}
-                  onChange={e => setNewSession(s => ({ ...s, dmName: e.target.value }))}
-                />
-              </div>
-              <div className="form-group" style={{ justifyContent: 'flex-end', flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
-                <button className="btn" onClick={() => setShowAddSession(false)}>取消</button>
-                <button className="btn btn-primary" onClick={submitSession}>✓ 创建场次</button>
-              </div>
+          )}
+        </>
+      ) : (
+        <div className="panel">
+          <div className="panel-title">
+            <span>📅 今日场次（按开场时间排序）</span>
+            <div className="actions">
+              <button className="btn" onClick={() => setShowAddSession(v => !v)}>
+                {showAddSession ? '取消' : '➕ 加开场次'}
+              </button>
             </div>
           </div>
-        )}
 
-        {sortedSessions.length === 0 ? (
-          <div className="empty-state">
-            <div className="icon">📋</div>
-            <div className="text">还没有场次，点击上方「加开场次」开始</div>
-          </div>
-        ) : (
-          <div className="grid-list">
-            {sortedSessions.map(s => {
-              const script = sessionMap.get(s.scriptId)
-              if (!script) return null
-              return (
-                <SessionCard
-                  key={s.id}
-                  session={s}
-                  script={script}
-                  onMatch={() => handleMatch(s)}
-                  currentOption={undefined}
-                />
-              )
-            })}
-          </div>
-        )}
-      </div>
+          {showAddSession && (
+            <div style={{ marginBottom: 16, padding: 14, background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div className="form-row-3">
+                <div className="form-group">
+                  <label>选择剧本</label>
+                  <select
+                    className="form-control"
+                    value={newSession.scriptId}
+                    onChange={e => setNewSession(s => ({ ...s, scriptId: e.target.value }))}
+                  >
+                    <option value="">请选择...</option>
+                    {scripts.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.minPlayers}-{s.bestPlayers}人 · {s.durationHours}h · ¥{s.price})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>开场时间</label>
+                  <input
+                    type="datetime-local"
+                    className="form-control"
+                    value={formatDateTimeInput(newSession.startTime)}
+                    onChange={e => setNewSession(s => ({ ...s, startTime: new Date(e.target.value).getTime() }))}
+                  />
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>当前值：{minDateStr}</div>
+                </div>
+                <div className="form-group">
+                  <label>房间名</label>
+                  <input
+                    className="form-control"
+                    placeholder="例：一号厅、VIP厅"
+                    value={newSession.roomName}
+                    onChange={e => setNewSession(s => ({ ...s, roomName: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>DM 姓名</label>
+                  <input
+                    className="form-control"
+                    placeholder="例：DM-小白"
+                    value={newSession.dmName}
+                    onChange={e => setNewSession(s => ({ ...s, dmName: e.target.value }))}
+                  />
+                </div>
+                <div className="form-group" style={{ justifyContent: 'flex-end', flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
+                  <button className="btn" onClick={() => setShowAddSession(false)}>取消</button>
+                  <button className="btn btn-primary" onClick={submitSession}>✓ 创建场次</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {sortedSessions.length === 0 ? (
+            <div className="empty-state">
+              <div className="icon">📋</div>
+              <div className="text">还没有场次，点击上方「加开场次」开始</div>
+            </div>
+          ) : (
+            <div className="grid-list">
+              {sortedSessions.map(s => {
+                const script = sessionMap.get(s.scriptId)
+                if (!script) return null
+                return (
+                  <SessionCard
+                    key={s.id}
+                    session={s}
+                    script={script}
+                    onMatch={() => handleMatch(s)}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

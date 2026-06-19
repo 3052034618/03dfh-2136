@@ -1,4 +1,4 @@
-import { Player, PLAYER_TAG_LABELS, PLAYER_TAG_COLORS, Proficiency } from '../types'
+import { Player, PLAYER_TAG_LABELS, PLAYER_TAG_COLORS, Proficiency, PlayerTag } from '../../types'
 
 const PROF_LABELS: Record<Proficiency, string> = {
   newbie: '新手',

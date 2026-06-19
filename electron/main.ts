@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
 import path from 'node:path'
 
 process.env.DIST_ELECTRON = path.join(__dirname, '..')
@@ -14,7 +14,7 @@ const indexHtml = path.join(process.env.DIST, 'index.html')
 
 function createWindow(): void {
   win = new BrowserWindow({
-    title: '剧本杀快速凑桌工具',
+    title: '剧本杀快速凑桌助手',
     width: 1440,
     height: 900,
     minWidth: 1200,
@@ -25,6 +25,19 @@ function createWindow(): void {
       contextIsolation: false,
     },
     autoHideMenuBar: true,
+    show: false,
+    backgroundColor: '#0f172a',
+  })
+
+  win.once('ready-to-show', () => {
+    win?.show()
+  })
+
+  win.webContents.setWindowOpenHandler(({ url: openUrl }) => {
+    if (openUrl.startsWith('http:')) {
+      shell.openExternal(openUrl)
+    }
+    return { action: 'deny' }
   })
 
   if (url) {
