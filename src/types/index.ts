@@ -1,5 +1,28 @@
 export type Proficiency = 'newbie' | 'familiar' | 'expert'
 
+export type PlayerSource = 'walkin' | 'reservation_late' | 'friend_brought' | 'online'
+
+export type PlayerStatus = 'waiting' | 'notified' | 'abandoned'
+
+export const PLAYER_SOURCE_LABELS: Record<PlayerSource, string> = {
+  walkin: '散客到店',
+  reservation_late: '预约迟到',
+  friend_brought: '朋友带来',
+  online: '线上预约',
+}
+
+export const PLAYER_STATUS_LABELS: Record<PlayerStatus, string> = {
+  waiting: '等候中',
+  notified: '已通知',
+  abandoned: '已放弃',
+}
+
+export const PLAYER_STATUS_COLORS: Record<PlayerStatus, string> = {
+  waiting: '#f59e0b',
+  notified: '#3b82f6',
+  abandoned: '#6b7280',
+}
+
 export type PlayerTag =
   | 'noisy'
   | 'newbie_friendly'
@@ -45,6 +68,8 @@ export interface Player {
   mindAcquaintance: boolean
   tags: PlayerTag[]
   note?: string
+  source: PlayerSource
+  status: PlayerStatus
   arrivalTime: number
 }
 

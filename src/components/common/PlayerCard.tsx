@@ -1,4 +1,4 @@
-import { Player, PLAYER_TAG_LABELS, PLAYER_TAG_COLORS, Proficiency, PlayerTag } from '../../types'
+import { Player, PLAYER_TAG_LABELS, PLAYER_TAG_COLORS, Proficiency, PlayerTag, PLAYER_SOURCE_LABELS, PLAYER_STATUS_LABELS, PLAYER_STATUS_COLORS, PlayerStatus } from '../../types'
 
 const PROF_LABELS: Record<Proficiency, string> = {
   newbie: '新手',
@@ -32,13 +32,14 @@ export function TagChip({ tag, onClick, selected }: { tag: keyof typeof PLAYER_T
 }
 
 export function PlayerCard({
-  player, selected, onSelect, onEdit, onRemove, showActions = true,
+  player, selected, onSelect, onEdit, onRemove, onUpdateStatus, showActions = true,
 }: {
   player: Player
   selected?: boolean
   onSelect?: () => void
   onEdit?: () => void
   onRemove?: () => void
+  onUpdateStatus?: (id: string, status: PlayerStatus) => void
   showActions?: boolean
 }) {
   const wait = formatWaitTime(player.arrivalTime)
@@ -60,8 +61,12 @@ export function PlayerCard({
         <span>{player.canCrossGender ? '接受' : '不接受'}</span>
         <span className="key">介意熟人</span>
         <span>{player.mindAcquaintance ? '介意陌生人' : '都可以'}</span>
+        <span className="key">来源</span>
+        <span>{PLAYER_SOURCE_LABELS[player.source]}</span>
         <span className="key">到店时间</span>
         <span className={`wait-time ${wait.long ? 'long' : ''}`}>{wait.text}</span>
+        <span className="key">状态</span>
+        <span style={{ color: PLAYER_STATUS_COLORS[player.status], fontWeight: 600 }}>{PLAYER_STATUS_LABELS[player.status]}</span>
       </div>
       {player.tags.length > 0 && (
         <div className="player-tags">
@@ -78,6 +83,12 @@ export function PlayerCard({
       {showActions && (
         <div className="player-actions">
           {onEdit && <button className="btn btn-sm" onClick={e => { e.stopPropagation(); onEdit() }}>编辑</button>}
+          {player.status === 'waiting' && onUpdateStatus && (
+            <button className="btn btn-sm" style={{ background: 'var(--info)', color: 'white' }} onClick={e => { e.stopPropagation(); onUpdateStatus(player.id, 'notified') }}>已通知</button>
+          )}
+          {player.status !== 'abandoned' && onUpdateStatus && (
+            <button className="btn btn-sm" style={{ background: 'var(--text-muted)', color: 'white' }} onClick={e => { e.stopPropagation(); onUpdateStatus(player.id, 'abandoned') }}>已放弃</button>
+          )}
           {onRemove && <button className="btn btn-sm btn-danger" onClick={e => { e.stopPropagation(); onRemove() }}>移出</button>}
         </div>
       )}

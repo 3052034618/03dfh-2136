@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState } from 'react'
 import { useApp } from '../store/AppContext'
-import { Session, Script, MatchOption } from '../types'
+import { Session, Script, MatchOption, SCRIPT_TYPE_LABELS, PLAYER_TAG_LABELS } from '../types'
 import { PlayerCard } from './common/PlayerCard'
 
 function formatTime(ts: number) {
@@ -28,6 +28,7 @@ export default function ConfirmDesk() {
 
   const [autoJumpDone, setAutoJumpDone] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [generatedText, setGeneratedText] = useState<{ title: string; content: string } | null>(null)
 
   useEffect(() => {
     if (autoJumpDone) return
@@ -159,6 +160,78 @@ export default function ConfirmDesk() {
     messages.push(`入座玩家：${option.players.map(p => `${p.name}(${p.count})`).join('、')}`)
     messages.push(`共${option.totalCount}人，请准时到场~`)
     alert(messages.join('\n'))
+  }
+
+  const generateSeatingSlip = () => {
+    if (!activeEntry?.script || !activeEntry.option) return
+    const { session, script, option } = activeEntry
+    const lines: string[] = []
+    lines.push('╔══════════════════════════════╗')
+    lines.push('║       🎭 玩家入座通知单       ║')
+    lines.push('╚══════════════════════════════╝')
+    lines.push('')
+    lines.push(`剧本：${script.name}（${SCRIPT_TYPE_LABELS[script.type]}）`)
+    lines.push(`房间：${session.roomName}`)
+    lines.push(`DM：${session.dmName}`)
+    lines.push(`开场时间：${formatFullTime(session.startTime)}`)
+    lines.push(`预计时长：${script.durationHours} 小时`)
+    lines.push(`价格：¥${script.price}/人`)
+    lines.push('')
+    lines.push('──── 玩家分组 ────')
+    option.players.forEach((p, i) => {
+      const groupInfo = p.groupName ? ` [${p.groupName}]` : ''
+      lines.push(`  ${i + 1}. ${p.name}${groupInfo} — ${p.count}人`)
+    })
+    lines.push(`  合计：${option.totalCount}人`)
+    lines.push('')
+    if (option.players.some(p => p.note)) {
+      lines.push('──── 注意事项 ────')
+      option.players.filter(p => p.note).forEach(p => {
+        lines.push(`  ⚠️ ${p.name}: ${p.note}`)
+      })
+      lines.push('')
+    }
+    lines.push('请各位玩家准时入座，祝游戏愉快！🎮')
+    setGeneratedText({ title: '入座单', content: lines.join('\n') })
+  }
+
+  const generateDMChecklist = () => {
+    if (!activeEntry?.script || !activeEntry.option) return
+    const { session, script, option } = activeEntry
+    const lines: string[] = []
+    lines.push('╔══════════════════════════════╗')
+    lines.push('║     📝 DM 准备清单            ║')
+    lines.push('╚══════════════════════════════╝')
+    lines.push('')
+    lines.push(`剧本：${script.name}`)
+    lines.push(`类型：${SCRIPT_TYPE_LABELS[script.type]} · 难度：${'★'.repeat(script.difficulty)}${'☆'.repeat(5 - script.difficulty)}`)
+    lines.push(`房间：${session.roomName}`)
+    lines.push(`开场：${formatFullTime(session.startTime)}`)
+    lines.push(`时长：${script.durationHours}h · 人数：${option.totalCount}人`)
+    lines.push(`反串要求：${script.crossGender === 'ok' ? '可反串' : script.crossGender === 'avoid' ? '尽量不反串' : '禁止反串'}`)
+    lines.push('')
+    lines.push('──── 玩家情况 ────')
+    option.players.forEach((p, i) => {
+      const groupInfo = p.groupName ? ` [${p.groupName} ${p.count}人]` : ` [${p.count}人]`
+      const profLabel = { newbie: '新手', familiar: '熟悉', expert: '老手' }[p.proficiency]
+      const tagsStr = p.tags.length > 0 ? ` 标签:${p.tags.map(t => PLAYER_TAG_LABELS[t]).join(',')}` : ''
+      lines.push(`  ${i + 1}. ${p.name}${groupInfo} ${profLabel}${tagsStr}`)
+    })
+    lines.push('')
+    if (option.players.some(p => p.note)) {
+      lines.push('⚠️ 特殊注意')
+      option.players.filter(p => p.note).forEach(p => {
+        lines.push(`  · ${p.name}: ${p.note}`)
+      })
+      lines.push('')
+    }
+    const newbies = option.players.filter(p => p.proficiency === 'newbie')
+    if (newbies.length > 0) {
+      lines.push(`💡 含 ${newbies.length} 名新手，请注意扶车讲解`)
+    }
+    lines.push('')
+    lines.push('准备确认：□ 剧本物料 □ 角色卡 □ 道具 □ BGM □ 饮品')
+    setGeneratedText({ title: 'DM 准备清单', content: lines.join('\n') })
   }
 
   const allChecked = (s: Session) => {
@@ -373,6 +446,12 @@ export default function ConfirmDesk() {
                       {allDone ? '✅ 全部核对完毕，可以通知玩家了' : '请逐项核对完成后再通知落座'}
                     </div>
                     <div style={{ display: 'flex', gap: 10 }}>
+                      {allDone && (
+                        <>
+                          <button className="btn" onClick={generateSeatingSlip}>📋 生成入座单</button>
+                          <button className="btn" onClick={generateDMChecklist}>📝 生成 DM 准备清单</button>
+                        </>
+                      )}
                       <button
                         className="btn"
                         disabled={s.status !== 'confirmed'}
@@ -399,6 +478,21 @@ export default function ConfirmDesk() {
           })()}
         </div>
       </div>
+
+      {generatedText && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }} onClick={() => setGeneratedText(null)}>
+          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, maxWidth: 520, width: '90%', maxHeight: '80vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700 }}>{generatedText.title}</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-sm" onClick={() => { navigator.clipboard.writeText(generatedText.content); alert('已复制到剪贴板') }}>📋 复制</button>
+                <button className="btn btn-sm btn-ghost" onClick={() => setGeneratedText(null)}>✕ 关闭</button>
+              </div>
+            </div>
+            <pre style={{ whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.8, color: 'var(--text)', background: 'var(--bg)', padding: 16, borderRadius: 8 }}>{generatedText.content}</pre>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

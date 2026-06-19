@@ -89,6 +89,8 @@ export const DEFAULT_PLAYERS: Player[] = [
     canCrossGender: true,
     mindAcquaintance: false,
     tags: ['noisy', 'social_bull'],
+    source: 'walkin',
+    status: 'waiting',
     arrivalTime: now - 1000 * 60 * 5,
   },
   {
@@ -100,6 +102,8 @@ export const DEFAULT_PLAYERS: Player[] = [
     canCrossGender: false,
     mindAcquaintance: true,
     tags: ['newbie_friendly', 'first_time'],
+    source: 'reservation_late',
+    status: 'waiting',
     arrivalTime: now - 1000 * 60 * 12,
   },
   {
@@ -113,6 +117,8 @@ export const DEFAULT_PLAYERS: Player[] = [
     canCrossGender: true,
     mindAcquaintance: false,
     tags: ['mechanism_expert', 'vip'],
+    source: 'walkin',
+    status: 'notified',
     arrivalTime: now - 1000 * 60 * 20,
   },
   {
@@ -124,6 +130,8 @@ export const DEFAULT_PLAYERS: Player[] = [
     canCrossGender: true,
     mindAcquaintance: false,
     tags: ['reasoning'],
+    source: 'friend_brought',
+    status: 'waiting',
     arrivalTime: now - 1000 * 60 * 3,
   },
   {
@@ -135,6 +143,8 @@ export const DEFAULT_PLAYERS: Player[] = [
     canCrossGender: false,
     mindAcquaintance: false,
     tags: ['emotional', 'newbie_friendly'],
+    source: 'walkin',
+    status: 'waiting',
     arrivalTime: now - 1000 * 60 * 8,
   },
   {
@@ -147,6 +157,8 @@ export const DEFAULT_PLAYERS: Player[] = [
     mindAcquaintance: true,
     tags: ['mechanism_expert', 'vip'],
     note: '要求熟人不拆开',
+    source: 'online',
+    status: 'waiting',
     arrivalTime: now - 1000 * 60 * 15,
   },
 ]

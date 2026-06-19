@@ -1,1 +1,1 @@
-console.log('Preload loaded')
+// preload - no custom APIs exposed

@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useApp } from '../store/AppContext'
-import { PlayerTag, PLAYER_TAG_LABELS, PLAYER_TAG_COLORS, Proficiency, Player } from '../types'
+import { PlayerTag, PLAYER_TAG_LABELS, PLAYER_TAG_COLORS, Proficiency, Player, PlayerSource, PlayerStatus, PLAYER_SOURCE_LABELS, PLAYER_STATUS_LABELS, PLAYER_STATUS_COLORS } from '../types'
 import { PlayerCard } from './common/PlayerCard'
 
 const TAG_LIST: PlayerTag[] = ['noisy', 'newbie_friendly', 'mechanism_expert', 'emotional', 'reasoning', 'social_bull', 'first_time', 'vip']
+const SOURCE_LIST: PlayerSource[] = ['walkin', 'reservation_late', 'friend_brought', 'online']
+const STATUS_LIST: PlayerStatus[] = ['waiting', 'notified', 'abandoned']
 
 function emptyForm(): Omit<Player, 'id' | 'arrivalTime'> {
   return {
@@ -18,6 +20,8 @@ function emptyForm(): Omit<Player, 'id' | 'arrivalTime'> {
     mindAcquaintance: false,
     tags: [],
     note: '',
+    source: 'walkin',
+    status: 'waiting',
   }
 }
 
@@ -30,6 +34,8 @@ export default function PlayerPool() {
   const [filterProf, setFilterProf] = useState<Proficiency | 'all'>('all')
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState<PlayerTag | 'all'>('all')
+  const [filterSource, setFilterSource] = useState<PlayerSource | 'all'>('all')
+  const [filterStatus, setFilterStatus] = useState<PlayerStatus | 'all'>('all')
 
   const startEdit = (p: Player) => {
     setForm({
@@ -44,6 +50,8 @@ export default function PlayerPool() {
       mindAcquaintance: p.mindAcquaintance,
       tags: [...p.tags],
       note: p.note ?? '',
+      source: p.source,
+      status: p.status,
     })
     setGroupEnabled(!!p.groupId)
     setEditingId(p.id)
@@ -82,14 +90,22 @@ export default function PlayerPool() {
     }))
   }
 
+  const handleUpdateStatus = (id: string, status: PlayerStatus) => {
+    updatePlayer(id, { status })
+  }
+
   const totalWaiting = players.reduce((s, p) => s + p.count, 0)
   const groupCount = new Set(players.filter(p => p.groupId).map(p => p.groupId)).size
+  const notifiedCount = players.filter(p => p.status === 'notified').length
+  const abandonedCount = players.filter(p => p.status === 'abandoned').length
   const longWaitCount = players.filter(p => Date.now() - p.arrivalTime > 30 * 60000).length
 
   const filtered = players.filter(p => {
     if (filterProf !== 'all' && p.proficiency !== filterProf) return false
     if (tagFilter !== 'all' && !p.tags.includes(tagFilter)) return false
     if (search && !p.name.includes(search)) return false
+    if (filterSource !== 'all' && p.source !== filterSource) return false
+    if (filterStatus !== 'all' && p.status !== filterStatus) return false
     return true
   })
 
@@ -106,9 +122,13 @@ export default function PlayerPool() {
           <div className="stat-num">{totalWaiting}</div>
           <div className="stat-label">等候总人数</div>
         </div>
-        <div className="stat-card success">
-          <div className="stat-num">{groupCount}</div>
-          <div className="stat-label">成团组数</div>
+        <div className="stat-card info">
+          <div className="stat-num">{notifiedCount}</div>
+          <div className="stat-label">已通知</div>
+        </div>
+        <div className="stat-card" style={{ opacity: abandonedCount > 0 ? 1 : 0.5 }}>
+          <div className="stat-num">{abandonedCount}</div>
+          <div className="stat-label">已放弃</div>
         </div>
         <div className={`stat-card ${longWaitCount > 0 ? 'danger' : ''}`}>
           <div className="stat-num">{longWaitCount}</div>
@@ -189,6 +209,12 @@ export default function PlayerPool() {
                   <option value={8}>8+ 小时（全天）</option>
                 </select>
               </div>
+              <div className="form-group">
+                <label>玩家来源</label>
+                <select className="form-control" value={form.source} onChange={e => setForm({ ...form, source: e.target.value as PlayerSource })}>
+                  {SOURCE_LIST.map(s => <option key={s} value={s}>{PLAYER_SOURCE_LABELS[s]}</option>)}
+                </select>
+              </div>
             </div>
 
             <div className="checkbox-group" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 20, marginBottom: 12 }}>
@@ -219,6 +245,22 @@ export default function PlayerPool() {
                 />
                 <span>属于某团队（需整体安排）</span>
               </label>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 12 }}>
+              <label>当前状态</label>
+              <div className="tags-selector">
+                {STATUS_LIST.map(s => (
+                  <span
+                    key={s}
+                    className={`tag-chip ${form.status === s ? 'selected' : ''}`}
+                    style={form.status === s ? { background: PLAYER_STATUS_COLORS[s], borderColor: 'transparent', color: 'white' } : undefined}
+                    onClick={() => setForm({ ...form, status: s })}
+                  >
+                    {PLAYER_STATUS_LABELS[s]}
+                  </span>
+                ))}
+              </div>
             </div>
 
             {groupEnabled && (
@@ -313,6 +355,14 @@ export default function PlayerPool() {
                 <option key={t} value={t}>{PLAYER_TAG_LABELS[t]}</option>
               ))}
             </select>
+            <select className="form-control" style={{ width: 130 }} value={filterSource} onChange={e => setFilterSource(e.target.value as PlayerSource | 'all')}>
+              <option value="all">全部来源</option>
+              {SOURCE_LIST.map(s => <option key={s} value={s}>{PLAYER_SOURCE_LABELS[s]}</option>)}
+            </select>
+            <select className="form-control" style={{ width: 130 }} value={filterStatus} onChange={e => setFilterStatus(e.target.value as PlayerStatus | 'all')}>
+              <option value="all">全部状态</option>
+              {STATUS_LIST.map(s => <option key={s} value={s}>{PLAYER_STATUS_LABELS[s]}</option>)}
+            </select>
           </div>
         </div>
 
@@ -331,6 +381,7 @@ export default function PlayerPool() {
                 onRemove={() => {
                   if (confirm(`确定把「${p.name}」移出候补池吗？`)) removePlayer(p.id)
                 }}
+                onUpdateStatus={handleUpdateStatus}
               />
             ))}
           </div>

@@ -13,9 +13,9 @@ function findElectronExe() {
 
 let electronStarted = false
 
-const vite = spawn(isWin ? 'npx.cmd' : 'npx', ['vite', '--host', '--port', '5173'], {
+const vite = spawn('npx', ['vite', '--host', '--port', '5173'], {
   stdio: ['inherit', 'pipe', 'pipe'],
-  shell: false,
+  shell: true,
   cwd: __dirname,
   env: process.env,
 })

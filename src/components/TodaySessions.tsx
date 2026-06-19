@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useApp } from '../store/AppContext'
-import { Session, Script, SCRIPT_TYPE_LABELS } from '../types'
+import { Session, Script, SCRIPT_TYPE_LABELS, MatchConflict, Player } from '../types'
 import { generateMatchOptions } from '../utils/matcher'
 import { PlayerCard } from './common/PlayerCard'
 
@@ -20,6 +20,34 @@ function formatTime(ts: number) {
 
 function countStars(n: number) {
   return '★'.repeat(n) + '☆'.repeat(5 - n)
+}
+
+function detectConflictsForSwitch(players: Player[], script: Script): MatchConflict[] {
+  const conflicts: MatchConflict[] = []
+  const total = players.reduce((s, p) => s + p.count, 0)
+  if (total > script.maxPlayers) {
+    conflicts.push({ type: 'over_max', severity: 'block', message: `人数 ${total} 超过剧本上限 ${script.maxPlayers}` })
+  }
+  if (total < script.minPlayers) {
+    conflicts.push({ type: 'over_max', severity: 'block', message: `人数 ${total} 不足剧本最低 ${script.minPlayers}` })
+  }
+  if (script.crossGender === 'forbidden' || script.crossGender === 'avoid') {
+    const cantCross = players.filter(p => !p.canCrossGender)
+    if (cantCross.length > 0) {
+      conflicts.push({ type: 'cross_gender_needed', severity: 'warn', message: `剧本${script.crossGender === 'forbidden' ? '禁止' : '建议不'}反串，但有 ${cantCross.length} 人不接受反串` })
+    }
+  }
+  const shortPlayers = players.filter(p => p.availableHours < script.durationHours)
+  if (shortPlayers.length > 0) {
+    conflicts.push({ type: 'duration_short', severity: 'warn', message: `剧本预计 ${script.durationHours}h，有 ${shortPlayers.length} 人可玩时长不足` })
+  }
+  if (script.difficulty >= 4) {
+    const newbies = players.filter(p => p.proficiency === 'newbie')
+    if (newbies.length > 0) {
+      conflicts.push({ type: 'proficiency_mismatch', severity: 'warn', message: `本难度 ${script.difficulty}/5，含 ${newbies.length} 名新手` })
+    }
+  }
+  return conflicts
 }
 
 function SessionCard({
@@ -97,6 +125,7 @@ function SessionCard({
 
 function MatchResults({
   session, script, onBack, onChoose, selectedId, onRematch,
+  allScripts, onSwitchScript,
 }: {
   session: Session
   script: Script
@@ -104,9 +133,37 @@ function MatchResults({
   onChoose: (optionId: string) => void
   selectedId: string | null
   onRematch: () => void
+  allScripts: Script[]
+  onSwitchScript: (newScriptId: string) => void
 }) {
   const { matchOptions } = useApp()
   const options = matchOptions[session.id] ?? []
+  const [showSwitchScript, setShowSwitchScript] = useState(false)
+  const [switchScriptId, setSwitchScriptId] = useState('')
+  const [switchResult, setSwitchResult] = useState<{
+    scriptName: string; minPlayers: number; bestPlayers: number; maxPlayers: number;
+    totalCount: number; durationHours: number; price: number; conflicts: MatchConflict[]
+  } | null>(null)
+
+  const handleSwitchScript = () => {
+    if (!switchScriptId) return
+    const newScript = allScripts.find(s => s.id === switchScriptId)
+    if (!newScript) return
+    const selectedOption = matchOptions[session.id]?.find(o => o.id === selectedId)
+    const players = selectedOption?.players ?? session.bookedPlayers
+    const total = players.reduce((s, p) => s + p.count, 0)
+    const conflicts = detectConflictsForSwitch(players, newScript)
+    setSwitchResult({
+      scriptName: newScript.name,
+      minPlayers: newScript.minPlayers,
+      bestPlayers: newScript.bestPlayers,
+      maxPlayers: newScript.maxPlayers,
+      totalCount: total,
+      durationHours: newScript.durationHours,
+      price: newScript.price,
+      conflicts,
+    })
+  }
 
   return (
     <div>
@@ -132,6 +189,57 @@ function MatchResults({
           <div className="num">{Math.max(0, script.minPlayers - session.bookedPlayers.reduce((s, p) => s + p.count, 0))}</div>
           <div className="lbl">当前缺口</div>
         </div>
+      </div>
+
+      <div style={{ marginBottom: 16, padding: 14, background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showSwitchScript ? 12 : 0 }}>
+          <span style={{ fontSize: 13, color: 'var(--text-dim)' }}>🔄 临时换本：保留当前玩家，换一个剧本重新评估</span>
+          <button className="btn btn-sm" onClick={() => setShowSwitchScript(v => !v)}>
+            {showSwitchScript ? '收起' : '换本'}
+          </button>
+        </div>
+        {showSwitchScript && (
+          <div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <select className="form-control" style={{ flex: 1 }} value={switchScriptId} onChange={e => setSwitchScriptId(e.target.value)}>
+                <option value="">选择新剧本...</option>
+                {allScripts
+                  .filter(s => s.id !== script.id)
+                  .map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.minPlayers}-{s.bestPlayers}人 · {s.durationHours}h · ¥{s.price})
+                    </option>
+                  ))}
+              </select>
+              <button className="btn btn-primary btn-sm" disabled={!switchScriptId} onClick={handleSwitchScript}>
+                评估换本
+              </button>
+            </div>
+            {switchResult && (
+              <div style={{ padding: 10, background: 'var(--bg-2)', borderRadius: 6, fontSize: 12 }}>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>换本评估结果（{switchResult.scriptName}）：</div>
+                <div style={{ color: 'var(--text-dim)' }}>
+                  人数需求 {switchResult.minPlayers}-{switchResult.bestPlayers}人（当前 {switchResult.totalCount}人）
+                  {switchResult.totalCount < switchResult.minPlayers ? ' ⚠️ 不够人' : switchResult.totalCount > switchResult.maxPlayers ? ' ⚠️ 人太多' : ' ✅ 人数合适'}
+                  {' · '}时长 {switchResult.durationHours}h · ¥{switchResult.price}/人
+                </div>
+                {switchResult.conflicts.length > 0 && (
+                  <div className="conflicts-list" style={{ marginTop: 8 }}>
+                    {switchResult.conflicts.map((c, i) => (
+                      <div key={i} className={`conflict-item ${c.severity}`}>
+                        <span className="conflict-icon">{c.severity === 'block' ? '🛑' : '⚠️'}</span>
+                        <span>{c.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => onSwitchScript(switchScriptId)}>
+                  ✅ 确认换本
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -202,8 +310,8 @@ function MatchResults({
 export default function TodaySessions() {
   const {
     sessions, scripts, players,
-    setMatchOptions, setSelectedMatch, selectedMatch,
-    addSession,
+    matchOptions, setMatchOptions, setSelectedMatch, selectedMatch,
+    addSession, updateSession,
   } = useApp()
   const [viewingSessionId, setViewingSessionId] = useState<string | null>(null)
   const [showAddSession, setShowAddSession] = useState(false)
@@ -258,6 +366,21 @@ export default function TodaySessions() {
   const handleChoose = (optionId: string) => {
     if (!viewingSessionId) return
     setSelectedMatch(viewingSessionId, optionId)
+  }
+
+  const handleSwitchScript = (sessionId: string, newScriptId: string) => {
+    const session = sessions.find(s => s.id === sessionId)
+    const newScript = sessionMap.get(newScriptId)
+    if (!session || !newScript) return
+    const currentOption = matchOptions[sessionId]?.find(o => o.id === selectedMatch?.optionId)
+    const currentPlayers = currentOption?.players ?? session.bookedPlayers
+    updateSession(sessionId, { scriptId: newScriptId })
+    const existingBooked = currentPlayers
+    const usedIds = new Set(existingBooked.map(p => p.id))
+    const availablePlayers = players.filter(p => !usedIds.has(p.id))
+    const opts = generateMatchOptions({ ...session, scriptId: newScriptId }, newScript, [...existingBooked, ...availablePlayers])
+    setMatchOptions(sessionId, opts)
+    setSelectedMatch(null)
   }
 
   const submitSession = () => {
@@ -324,6 +447,8 @@ export default function TodaySessions() {
             onChoose={handleChoose}
             selectedId={selectedMatch?.sessionId === viewingSession.id ? selectedMatch.optionId : null}
             onRematch={handleRematch}
+            allScripts={scripts}
+            onSwitchScript={(newScriptId) => handleSwitchScript(viewingSession.id, newScriptId)}
           />
           {selectedMatch?.sessionId === viewingSession.id && (
             <div style={{ position: 'sticky', bottom: 16, marginTop: 20, textAlign: 'right', zIndex: 10 }}>

@@ -27,12 +27,20 @@ interface AppContextType extends AppState {
 
 const AppContext = createContext<AppContextType | null>(null)
 
-const STORAGE_KEY = 'jubensha_matcher_state_v1'
+const STORAGE_KEY = 'jubensha_matcher_state_v2'
 
 function loadState(): AppState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      const state: AppState = JSON.parse(raw)
+      state.players = state.players.map(p => ({
+        ...p,
+        source: p.source ?? 'walkin',
+        status: p.status ?? 'waiting',
+      }))
+      return state
+    }
   } catch {}
   return null
 }
