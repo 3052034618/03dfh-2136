@@ -208,14 +208,32 @@ function computeScore(players: Player[], script: Script, conflicts: MatchConflic
 export function generateMatchOptions(
   session: Session,
   script: Script,
-  allPlayers: Player[]
+  allPlayers: Player[],
+  lockedPlayerIds: string[] = []
 ): MatchOption[] {
   const activePlayers = allPlayers.filter(p => p.status !== 'abandoned')
   const options: MatchOption[] = []
   const seen = new Set<string>()
 
-  const soloPlayers = activePlayers.filter(p => !p.groupId)
-  const groups = activePlayers.filter(p => p.groupId)
+  const lockedIds = new Set(lockedPlayerIds)
+  let lockedPlayers = activePlayers.filter(p => lockedIds.has(p.id))
+  if (session.bookedPlayers?.length) {
+    const existingLockedIds = new Set(lockedPlayers.map(p => p.id))
+    for (const bp of session.bookedPlayers) {
+      if (lockedIds.has(bp.id) && !existingLockedIds.has(bp.id) && bp.status !== 'abandoned') {
+        lockedPlayers.push(bp)
+      }
+    }
+  }
+  const availableCandidates = activePlayers.filter(p => !lockedIds.has(p.id))
+
+  const lockedCount = sumCount(lockedPlayers)
+  if (lockedCount > script.maxPlayers) {
+    return []
+  }
+
+  const soloPlayers = availableCandidates.filter(p => !p.groupId)
+  const groups = availableCandidates.filter(p => p.groupId)
   const uniqueGroups = Array.from(new Map(groups.map(g => [g.groupId!, g])).values())
 
   function tryBuild(candidates: Player[]): MatchOption | null {
@@ -233,6 +251,7 @@ export function generateMatchOptions(
       id: uid(),
       sessionId: session.id,
       players: candidates,
+      lockedPlayerIds: [...lockedPlayerIds],
       totalCount: total,
       conflicts: computedConflicts,
       score: computedScore,
@@ -259,35 +278,51 @@ export function generateMatchOptions(
   const groupSubsets = pickSubsets(uniqueGroups, 4)
   const soloSubsets = pickSubsets(soloPlayers, Math.min(8, soloPlayers.length))
 
+  if (lockedPlayers.length > 0) {
+    const opt = tryBuild([...lockedPlayers])
+    if (opt) options.push(opt)
+  }
+
   for (const gs of groupSubsets) {
     const groupMembers: Player[] = []
     for (const g of gs) {
       groupMembers.push(...groups.filter(gr => gr.groupId === g.groupId))
     }
     const groupTotal = sumCount(groupMembers)
-    if (groupTotal > script.maxPlayers) continue
+    if (lockedCount + groupTotal > script.maxPlayers) continue
 
-    if (groupTotal >= script.minPlayers && groupTotal <= script.maxPlayers) {
-      const opt = tryBuild(groupMembers)
+    if (lockedCount + groupTotal >= script.minPlayers && lockedCount + groupTotal <= script.maxPlayers) {
+      const opt = tryBuild([...lockedPlayers, ...groupMembers])
       if (opt) options.push(opt)
     }
 
-    const needMin = Math.max(0, script.minPlayers - groupTotal)
-    const needMax = script.maxPlayers - groupTotal
+    const needMin = Math.max(0, script.minPlayers - lockedCount - groupTotal)
+    const needMax = script.maxPlayers - lockedCount - groupTotal
     for (const ss of soloSubsets) {
       const soloTotal = sumCount(ss)
       if (soloTotal < needMin || soloTotal > needMax) continue
       if (hasConflictingGroup(groupMembers, ss)) continue
-      const opt = tryBuild([...groupMembers, ...ss])
+      const opt = tryBuild([...lockedPlayers, ...groupMembers, ...ss])
       if (opt) options.push(opt)
     }
   }
 
-  for (const ss of soloSubsets) {
-    const soloTotal = sumCount(ss)
-    if (soloTotal < script.minPlayers || soloTotal > script.maxPlayers) continue
-    const opt = tryBuild(ss)
-    if (opt) options.push(opt)
+  if (lockedPlayers.length === 0) {
+    for (const ss of soloSubsets) {
+      const soloTotal = sumCount(ss)
+      if (soloTotal < script.minPlayers || soloTotal > script.maxPlayers) continue
+      const opt = tryBuild(ss)
+      if (opt) options.push(opt)
+    }
+  } else {
+    const needMin = Math.max(0, script.minPlayers - lockedCount)
+    const needMax = script.maxPlayers - lockedCount
+    for (const ss of soloSubsets) {
+      const soloTotal = sumCount(ss)
+      if (soloTotal < needMin || soloTotal > needMax) continue
+      const opt = tryBuild([...lockedPlayers, ...ss])
+      if (opt) options.push(opt)
+    }
   }
 
   const sorted = options

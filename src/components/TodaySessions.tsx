@@ -280,14 +280,44 @@ function MatchResults({
                 )}
               </div>
 
-              <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 8 }}>
-                包含 {opt.players.length} 组玩家：
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
-                {opt.players.map(p => (
-                  <PlayerCard key={p.id} player={p} showActions={false} />
-                ))}
-              </div>
+              {opt.lockedPlayerIds.length > 0 ? (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#fbbf24' }}>🔒 已锁定玩家（{opt.players.filter(p => opt.lockedPlayerIds.includes(p.id)).length} 组，{opt.players.filter(p => opt.lockedPlayerIds.includes(p.id)).reduce((a, b) => a + b.count, 0)} 人）</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>换本不换人，这部分不会动</div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8, marginBottom: 12 }}>
+                    {opt.players.filter(p => opt.lockedPlayerIds.includes(p.id)).map(p => (
+                      <div key={p.id} style={{ border: '1.5px solid #fbbf24', borderRadius: 8 }}>
+                        <PlayerCard player={p} showActions={false} />
+                      </div>
+                    ))}
+                  </div>
+                  {opt.players.filter(p => !opt.lockedPlayerIds.includes(p.id)).length > 0 && (
+                    <>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#34d399', marginBottom: 6 }}>
+                        ➕ 候补补位（{opt.players.filter(p => !opt.lockedPlayerIds.includes(p.id)).length} 组，{opt.players.filter(p => !opt.lockedPlayerIds.includes(p.id)).reduce((a, b) => a + b.count, 0)} 人）
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+                        {opt.players.filter(p => !opt.lockedPlayerIds.includes(p.id)).map(p => (
+                          <PlayerCard key={p.id} player={p} showActions={false} />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 8 }}>
+                    包含 {opt.players.length} 组玩家：
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+                    {opt.players.map(p => (
+                      <PlayerCard key={p.id} player={p} showActions={false} />
+                    ))}
+                  </div>
+                </>
+              )}
 
               {opt.reasons.length > 0 && (
                 <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -355,7 +385,8 @@ export default function TodaySessions() {
     const existingBooked = session.bookedPlayers
     const usedIds = new Set(existingBooked.map(p => p.id))
     const availablePlayers = players.filter(p => !usedIds.has(p.id))
-    const opts = generateMatchOptions(session, script, [...existingBooked, ...availablePlayers])
+    const lockedIds = existingBooked.map(p => p.id)
+    const opts = generateMatchOptions(session, script, [...existingBooked, ...availablePlayers], lockedIds)
     setMatchOptions(session.id, opts)
   }
 
@@ -384,11 +415,17 @@ export default function TodaySessions() {
     if (!session || !newScript) return
     const currentOption = matchOptions[sessionId]?.find(o => o.id === selectedMatch?.optionId)
     const currentPlayers = currentOption?.players ?? session.bookedPlayers
-    updateSession(sessionId, { scriptId: newScriptId, bookedPlayers: currentPlayers })
+    updateSession(sessionId, {
+      scriptId: newScriptId,
+      bookedPlayers: currentPlayers,
+      originalScriptId: session.originalScriptId ?? session.scriptId,
+      switchScriptAt: Date.now(),
+    })
     const existingBooked = currentPlayers
     const usedIds = new Set(existingBooked.map(p => p.id))
     const availablePlayers = players.filter(p => !usedIds.has(p.id))
-    const opts = generateMatchOptions({ ...session, scriptId: newScriptId }, newScript, [...existingBooked, ...availablePlayers])
+    const lockedIds = existingBooked.map(p => p.id)
+    const opts = generateMatchOptions({ ...session, scriptId: newScriptId }, newScript, [...existingBooked, ...availablePlayers], lockedIds)
     setMatchOptions(sessionId, opts)
     setSelectedMatch(null)
   }
@@ -491,10 +528,52 @@ export default function TodaySessions() {
                     <span className={`dispatch-status status-${s.status}`}>
                       {STATUS_LABELS[s.status]}
                     </span>
-                    {s.status === 'pending' ? (
-                      <button className="btn btn-primary btn-sm" onClick={() => handleMatch(s)}>{nextAction}</button>
-                    ) : (
-                      <span className="dispatch-action">{nextAction}</span>
+                    {s.status === 'pending' && (
+                      <button className="btn btn-primary btn-sm" onClick={() => handleMatch(s)}>
+                        🔍 凑桌
+                      </button>
+                    )}
+                    {(s.status === 'matched' || (s.status === 'confirmed' && !allConfirmed)) && (
+                      <button className="btn btn-primary btn-sm" onClick={() => {
+                        sessionStorage.setItem('pending_confirm_session', s.id)
+                        document.dispatchEvent(new CustomEvent('navigate', { detail: 'confirm' }))
+                      }}>
+                        ✅ 核对
+                      </button>
+                    )}
+                    {s.status === 'confirmed' && allConfirmed && !s.handover?.playersNotified && (
+                      <button className="btn btn-sm" style={{ background: 'var(--info)', color: 'white' }} onClick={() => {
+                        updateSession(s.id, { handover: { ...s.handover!, playersNotified: true } })
+                      }}>
+                        📣 已通知
+                      </button>
+                    )}
+                    {s.status === 'confirmed' && allConfirmed && s.handover?.playersNotified && !s.handover?.gameStarted && (
+                      <button className="btn btn-success btn-sm" onClick={() => {
+                        if (confirm('确认开本？')) {
+                          updateSession(s.id, { 
+                            status: 'playing', 
+                            handover: { ...s.handover!, gameStarted: true, gameStartedAt: Date.now() } 
+                          })
+                        }
+                      }}>
+                        🎲 开本
+                      </button>
+                    )}
+                    {s.status === 'playing' && (
+                      <button className="btn btn-sm" style={{ background: 'var(--text-muted)', color: 'white' }} onClick={() => {
+                        if (confirm('确认结束本局？')) {
+                          updateSession(s.id, { 
+                            status: 'ended', 
+                            handover: { ...s.handover!, gameEndedAt: Date.now() } 
+                          })
+                        }
+                      }}>
+                        🏁 结束
+                      </button>
+                    )}
+                    {s.status === 'ended' && (
+                      <span className="dispatch-action">已完成</span>
                     )}
                   </div>
                 </div>

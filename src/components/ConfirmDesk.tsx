@@ -30,6 +30,19 @@ export default function ConfirmDesk() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [generatedText, setGeneratedText] = useState<{ title: string; content: string } | null>(null)
   const [handlerInput, setHandlerInput] = useState('')
+  const [exceptionInput, setExceptionInput] = useState('')
+
+  const addException = (sessionId: string, exc: string) => {
+    const s = sessions.find(x => x.id === sessionId)
+    if (!s?.handover) return
+    updateSession(sessionId, {
+      handover: {
+        ...s.handover,
+        exceptions: [...(s.handover.exceptions ?? []), exc],
+      },
+    })
+    setExceptionInput('')
+  }
 
   useEffect(() => {
     if (autoJumpDone) return
@@ -58,6 +71,7 @@ export default function ConfirmDesk() {
             id: 'confirmed',
             sessionId: s.id,
             players: s.bookedPlayers,
+            lockedPlayerIds: s.bookedPlayers.map(p => p.id),
             totalCount: s.bookedPlayers.reduce((a, b) => a + b.count, 0),
             conflicts: [],
             score: 0,
@@ -168,6 +182,8 @@ export default function ConfirmDesk() {
     if (!activeEntry?.script || !activeEntry.option) return
     const { session: rawSession, script, option } = activeEntry
     const session = sessions.find(x => x.id === rawSession.id) ?? rawSession
+    const price = session.handover?.priceOverride ?? script.price
+    const dmName = session.handover?.dmNameOverride ?? session.dmName
     const lines: string[] = []
     lines.push('╔══════════════════════════════╗')
     lines.push('║       🎭 玩家入座通知单       ║')
@@ -175,10 +191,10 @@ export default function ConfirmDesk() {
     lines.push('')
     lines.push(`剧本：${script.name}（${SCRIPT_TYPE_LABELS[script.type]}）`)
     lines.push(`房间：${session.roomName}`)
-    lines.push(`DM：${session.dmName}`)
+    lines.push(`DM：${dmName}`)
     lines.push(`开场时间：${formatFullTime(session.startTime)}`)
     lines.push(`预计时长：${script.durationHours} 小时`)
-    lines.push(`价格：¥${script.price}/人`)
+    lines.push(`价格：¥${price}/人`)
     lines.push('')
     lines.push('──── 玩家分组 ────')
     option.players.forEach((p, i) => {
@@ -199,6 +215,13 @@ export default function ConfirmDesk() {
     lines.push(`经手前台：${session.handover?.handlerName || '—'}`)
     lines.push(`已通知玩家：${session.handover?.playersNotified ? '是' : '否'}`)
     lines.push(`已开本：${session.handover?.gameStarted ? '是' : '否'}`)
+    if (session.handover?.notes) {
+      lines.push(`备注：${session.handover.notes}`)
+    }
+    if (session.handover?.exceptions?.length) {
+      lines.push('异常：')
+      session.handover.exceptions.forEach(ex => lines.push(`  ⚠️ ${ex}`))
+    }
     lines.push('')
     lines.push('请各位玩家准时入座，祝游戏愉快！🎮')
     setGeneratedText({ title: '入座单', content: lines.join('\n') })
@@ -208,6 +231,8 @@ export default function ConfirmDesk() {
     if (!activeEntry?.script || !activeEntry.option) return
     const { session: rawSession, script, option } = activeEntry
     const session = sessions.find(x => x.id === rawSession.id) ?? rawSession
+    const price = session.handover?.priceOverride ?? script.price
+    const dmName = session.handover?.dmNameOverride ?? session.dmName
     const lines: string[] = []
     lines.push('╔══════════════════════════════╗')
     lines.push('║     📝 DM 准备清单            ║')
@@ -216,8 +241,10 @@ export default function ConfirmDesk() {
     lines.push(`剧本：${script.name}`)
     lines.push(`类型：${SCRIPT_TYPE_LABELS[script.type]} · 难度：${'★'.repeat(script.difficulty)}${'☆'.repeat(5 - script.difficulty)}`)
     lines.push(`房间：${session.roomName}`)
+    lines.push(`DM：${dmName}`)
     lines.push(`开场：${formatFullTime(session.startTime)}`)
     lines.push(`时长：${script.durationHours}h · 人数：${option.totalCount}人`)
+    lines.push(`价格：¥${price}/人`)
     lines.push(`反串要求：${script.crossGender === 'ok' ? '可反串' : script.crossGender === 'avoid' ? '尽量不反串' : '禁止反串'}`)
     lines.push('')
     lines.push('──── 玩家情况 ────')
@@ -245,6 +272,13 @@ export default function ConfirmDesk() {
     lines.push(`经手前台：${session.handover?.handlerName || '—'}`)
     lines.push(`玩家已通知：${session.handover?.playersNotified ? '是' : '否'}`)
     lines.push(`已开本：${session.handover?.gameStarted ? '是' : '否'}`)
+    if (session.handover?.notes) {
+      lines.push(`备注：${session.handover.notes}`)
+    }
+    if (session.handover?.exceptions?.length) {
+      lines.push('⚠️ 异常记录：')
+      session.handover.exceptions.forEach(ex => lines.push(`  · ${ex}`))
+    }
     lines.push('')
     lines.push('准备确认：□ 剧本物料 □ 角色卡 □ 道具 □ BGM □ 饮品')
     setGeneratedText({ title: 'DM 准备清单', content: lines.join('\n') })
@@ -465,6 +499,69 @@ export default function ConfirmDesk() {
                         >
                           {s.handover?.gameStarted ? `✅ 已开本（${s.handover.gameStartedAt ? formatFullTime(s.handover.gameStartedAt) : ''}）` : '❌ 未开本（点击切换）'}
                         </span>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 10, padding: 12, background: 'var(--bg-3)', borderRadius: 6 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>📝 交接备注 & 异常记录</div>
+                      
+                      <div className="form-group" style={{ marginBottom: 10 }}>
+                        <label style={{ fontSize: 11 }}>备注（玩家迟到、改价、DM换人等说明）</label>
+                        <textarea
+                          className="form-control"
+                          style={{ minHeight: 60, fontSize: 12, resize: 'vertical' }}
+                          placeholder="例：3号玩家可能迟到15分钟、总价优惠20元、DM-小白临时换成DM-老王..."
+                          value={s.handover?.notes ?? ''}
+                          onChange={e => updateSession(s.id, { handover: { ...s.handover!, notes: e.target.value } })}
+                          onBlur={e => updateSession(s.id, { handover: { ...s.handover!, notes: e.target.value } })}
+                        />
+                      </div>
+
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>异常记录（点击 ✕ 删除）：</div>
+                      {(s.handover?.exceptions?.length ?? 0) > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                          {s.handover!.exceptions!.map((exc, i) => (
+                            <span key={i} style={{ 
+                              display: 'inline-flex', alignItems: 'center', gap: 6,
+                              padding: '4px 10px', borderRadius: 4, 
+                              background: 'rgba(239,68,68,0.1)', color: '#fca5a5',
+                              fontSize: 12, border: '1px solid rgba(239,68,68,0.2)'
+                            }}>
+                              ⚠️ {exc}
+                              <button 
+                                style={{ background: 'transparent', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: 12, padding: 0 }}
+                                onClick={() => {
+                                  const newExc = [...s.handover!.exceptions!]
+                                  newExc.splice(i, 1)
+                                  updateSession(s.id, { handover: { ...s.handover!, exceptions: newExc } })
+                                }}
+                              >✕</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <input
+                          className="form-control"
+                          style={{ flex: 1, padding: '5px 10px', fontSize: 12 }}
+                          placeholder="添加异常记录（例：有人迟到、临时改价、DM换人）..."
+                          value={exceptionInput}
+                          onChange={e => setExceptionInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && exceptionInput.trim()) {
+                              e.preventDefault()
+                              addException(s.id, exceptionInput.trim())
+                            }
+                          }}
+                        />
+                        <button 
+                          className="btn btn-sm" 
+                          style={{ background: 'var(--danger)', color: 'white' }}
+                          onClick={() => {
+                            if (exceptionInput.trim()) addException(s.id, exceptionInput.trim())
+                          }}
+                        >
+                          ➕ 添加
+                        </button>
                       </div>
                     </div>
                   </div>

@@ -102,12 +102,18 @@ export interface SessionHandover {
   playersNotified: boolean
   gameStarted: boolean
   gameStartedAt?: number
+  gameEndedAt?: number
   lastViewedAt?: number
+  priceOverride?: number
+  dmNameOverride?: string
+  notes?: string
+  exceptions?: string[]
 }
 
 export interface Session {
   id: string
   scriptId: string
+  originalScriptId?: string
   startTime: number
   roomName: string
   dmName: string
@@ -121,12 +127,14 @@ export interface Session {
     carpoolSuccess: boolean
   }
   handover?: SessionHandover
+  switchScriptAt?: number
 }
 
 export interface MatchOption {
   id: string
   sessionId: string
   players: Player[]
+  lockedPlayerIds: string[]
   totalCount: number
   conflicts: MatchConflict[]
   score: number

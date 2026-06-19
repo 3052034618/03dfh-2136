@@ -3,8 +3,9 @@ import { useApp } from './store/AppContext'
 import TodaySessions from './components/TodaySessions'
 import PlayerPool from './components/PlayerPool'
 import ConfirmDesk from './components/ConfirmDesk'
+import Recap from './components/Recap'
 
-type Tab = 'sessions' | 'pool' | 'confirm'
+type Tab = 'sessions' | 'pool' | 'confirm' | 'recap'
 
 function useClock() {
   const [now, setNow] = useState(new Date())
@@ -26,6 +27,7 @@ export default function App() {
       if (e.detail === 'confirm') setTab('confirm')
       else if (e.detail === 'sessions') setTab('sessions')
       else if (e.detail === 'pool') setTab('pool')
+      else if (e.detail === 'recap') setTab('recap')
     }
     document.addEventListener('navigate', handler as any)
     return () => document.removeEventListener('navigate', handler as any)
@@ -81,12 +83,19 @@ export default function App() {
           ✅ 成桌核对
           {toConfirm > 0 && <span className="badge">{toConfirm}</span>}
         </button>
+        <button
+          className={`tab ${tab === 'recap' ? 'active' : ''}`}
+          onClick={() => setTab('recap')}
+        >
+          📊 今日复盘
+        </button>
       </nav>
 
       <main className="main-content">
         {tab === 'sessions' && <TodaySessions />}
         {tab === 'pool' && <PlayerPool />}
         {tab === 'confirm' && <ConfirmDesk />}
+        {tab === 'recap' && <Recap />}
       </main>
     </div>
   )
